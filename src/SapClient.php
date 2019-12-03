@@ -71,17 +71,12 @@ class SapClient implements iSapClient
 
         $result = $this->getSoapClient()->CheckBusinessPartner($params)->CheckBusinessPartnerResult;
 
-        if($result == 0) {
-            return false;
-        }
-        elseif ($result == 1) {
+        if ($result == 'Businees Partner Found.') {
             return true;
         }
-        elseif($result == 'IS Not Valid User') {
-            throw new UnAuthenticatedException;
+        else {
+            return false;
         }
-
-        return $result;
     }
 
     /**
@@ -90,10 +85,9 @@ class SapClient implements iSapClient
      * @param string $mobile
      * @param string $email
      * @param int $is_lid
-     * @return mixed
+     * @return string business partner unique identifier on sap on success
      * @throws APIResponseConnectException
      * @throws APIResponseException
-     * @throws UnAuthenticatedException
      */
     function createBusinessPartner(
         string $full_name,
@@ -109,26 +103,29 @@ class SapClient implements iSapClient
             'nationalCode' => $national_code,
             'mobile' => $mobile,
             'fullName' => $full_name,
-            'Email' => $email,
+            'email' => $email,
             'isLid' => $is_lid,
         ];
 
-        $result = $this->getSoapClient()->CreateBusinessPartner($params)->CreateBusinessPartnerResult;
+        try {
+            $result = $this->getSoapClient()->CreateBusinessPartner($params)->CreateBusinessPartnerResult;
 
-        ### failed creation of business partner
-        if($result == 'BP did not add') {
-            return false;
+            if(strpos($result, "New Business Partner CardCode") !== false ) {
+                return $sap_id = explode(':', $result)[1];
+            }
+
+
+
+        }
+        catch (\Exception $e) {
+            if(get_class($e) == 'SoapFault' && $e->getMessage() == 'Could not connect to host' ) {
+                throw new APIResponseConnectException(
+                    sprintf('Exception Class : %s, Exception Message : %s', get_class($e), $e->getMessage())
+                );
+            }
+            throw $e;
         }
 
-        ## invalid username and password
-        elseif($result == 'IS Not Valid User') {
-            throw new UnAuthenticatedException;
-        }
-
-        ### success business partner creation
-        else {
-            return true;
-        }
 
     }
 
@@ -190,10 +187,7 @@ class SapClient implements iSapClient
      */
     function healthCheck()
     {
-        $params = [
-            'username' => $this->username,
-            'password' => $this->password
-        ];
+        $params = ['username' => $this->username, 'password' => $this->password];
 
         $result = $this->getSoapClient()->HealthCheck($params)->HealthCheckResult;
 
@@ -232,7 +226,9 @@ class SapClient implements iSapClient
                 strpos($e->getMessage(), "SOAP-ERROR: Parsing WSDL: Couldn't load from") !== false
             ) {
                 throw new ApiResponseConnectException(
-                    sprintf("Exception Class : %s , Exception Message is : %s", get_class($e), $e->getMessage())
+                    sprintf("Invalid Soap Server
+                    Exception Class : %s , 
+                    Exception Message is : %s", get_class($e), $e->getMessage())
                 );
             }
 
@@ -244,6 +240,70 @@ class SapClient implements iSapClient
             }
         }
 
+    }
+
+    /**
+     * @param string $mobile
+     * @return BusinessPartnerEntity
+     * @throws APIResponseConnectException
+     * @throws APIResponseException
+     */
+    function getBusinessPartnerByMobile(string $mobile)
+    {
+        $params = ['username' => $this->username, 'password' => $this->password, 'Cellular' => $mobile];
+
+        $result = $this->getSoapClient()->GetBPByCellular($params)->GetBPByCellularResult;
+        return $this->extractBPFromXml($result);
+    }
+
+    /**
+     * @param string $national_code
+     * @return BusinessPartnerEntity
+     * @throws APIResponseConnectException
+     * @throws APIResponseException
+     */
+    function getBusinessPartnerByNationalCode(string $national_code)
+    {
+        $params = ['username' => $this->username, 'password' => $this->password, 'NationalId' => $national_code];
+
+        $result = $this->getSoapClient()->GetBPByNationalCode($params)->GetBPByNationalCodeResult;
+        return $this->extractBPFromXml($result);
+    }
+
+    /**
+     * @param string $sap_identifier
+     * @return BusinessPartnerEntity
+     * @throws APIResponseConnectException
+     * @throws APIResponseException
+     */
+    function getBusinessPartnerByBPSapIdentifier(string $sap_identifier)
+    {
+        $params = ['username' => $this->username, 'password' => $this->password, 'CardCode' => $sap_identifier];
+
+        $result = $this->getSoapClient()->GetBPByCardCode($params)->GetBPByCardCodeResult;
+        return $this->extractBPFromXml($result);    }
+
+
+    /**
+     * @param string $xml
+     * @return BusinessPartnerEntity
+     */
+    private function extractBPFromXml(string $xml)
+    {
+        $full_name = get_string_between($xml, '<CardName>', '</CardName>');
+        $sap_id = get_string_between($xml, '<CardCode>', '</CardCode>');
+        $mobile = get_string_between($xml, '<Cellular>', '</Cellular>');
+        $email = get_string_between($xml, '<E_Mail>', '</E_Mail>');
+        $country = get_string_between($xml, '<Country>', '</Country>');
+        $national_code = get_string_between($xml, '<AddID>', '</AddID>');
+
+        return (new BusinessPartnerEntity())
+            ->setSapId($sap_id)
+            ->setFullName($full_name)
+            ->setNationalCode($national_code)
+            ->setMobile($mobile)
+            ->setEmail($email)
+            ->setCountry($country);
     }
 
 }

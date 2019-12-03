@@ -8,10 +8,29 @@ namespace mhndev\sapClient;
 interface iSapClient
 {
 
+
+    /**
+     * @param string $mobile
+     * @return BusinessPartnerEntity
+     */
+    function getBusinessPartnerByMobile(string $mobile);
+
+    /**
+     * @param string $national_code
+     * @return BusinessPartnerEntity
+     */
+    function getBusinessPartnerByNationalCode(string $national_code);
+
+    /**
+     * @param string $sap_identifier
+     * @return BusinessPartnerEntity
+     */
+    function getBusinessPartnerByBPSapIdentifier(string $sap_identifier);
+
     /**
      * @param string $national_code
      * @param string $phone_number
-     * @return mixed
+     * @return bool
      */
     function checkBusinessPartner(string $national_code, string $phone_number);
 
